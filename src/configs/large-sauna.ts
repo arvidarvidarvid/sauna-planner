@@ -42,6 +42,7 @@ const building: Building = {
   assemblies: {
     exteriorWall: 'standard-sauna-wall',
     roof: 'cold-roof-metal',
+    interiorPartition: 'standard-interior-partition',
   },
 
   terrace: {
@@ -163,7 +164,18 @@ const building: Building = {
             },
           ],
         },
-        east: { openings: [] },
+        east: {
+          openings: [
+            {
+              id: 'sauna-window-east',
+              type: 'window',
+              center: 0,
+              width: 0.4,
+              height: 0.4,
+              fromFloor: 1.3,
+            },
+          ],
+        },
         west: {
           openings: [
             {

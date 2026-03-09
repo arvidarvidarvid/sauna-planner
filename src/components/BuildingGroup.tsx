@@ -1,8 +1,9 @@
-import type { Building, WallName } from '@/types/sauna'
+import type { Building } from '@/types/sauna'
 import type { Assembly } from '@/types/assembly'
 import type { ViewMode } from '@/App'
-import { getAssembly, getTotalThickness, getFrameDepth } from '@/lib/assemblies'
+import { getAssembly, getTotalThickness, getFrameDepth, getExteriorDepth } from '@/lib/assemblies'
 import { generateJoists } from '@/lib/framing'
+import { computeInteriorWalls } from '@/lib/building'
 import ExteriorWalls from './ExteriorWalls'
 import RoofGeometry from './RoofGeometry'
 import RoomGroup from './RoomGroup'
@@ -13,80 +14,7 @@ interface Props {
   viewMode: ViewMode
 }
 
-const DEFAULT_WALL_THICKNESS = 0.12
-
-/**
- * Determines which walls of each room are interior (shared with another room).
- * Interior walls are rendered as partition walls inside RoomGroup.
- * Exterior walls are handled by ExteriorWalls and NOT rendered inside RoomGroup.
- */
-function computeInteriorWalls(building: Building): Map<string, Set<WallName>> {
-  const result = new Map<string, Set<WallName>>()
-  const { width: bw, length: bl } = building.dimensions
-
-  for (const room of building.rooms) {
-    const interior = new Set<WallName>()
-    const { x, z } = room.position
-    const { width: rw, length: rl } = room.dimensions
-
-    const isNorthExterior = Math.abs(z) < 0.01
-    const isSouthExterior = Math.abs((z + rl) - bl) < 0.01
-    const isEastExterior  = Math.abs((x + rw) - bw) < 0.01
-    const isWestExterior  = Math.abs(x) < 0.01
-
-    if (!isNorthExterior) {
-      const hasNeighbor = building.rooms.some(other => {
-        if (other.id === room.id) return false
-        return (
-          Math.abs((other.position.z + other.dimensions.length) - z) < 0.01 &&
-          rangesOverlap(other.position.x, other.position.x + other.dimensions.width, x, x + rw)
-        )
-      })
-      if (hasNeighbor) interior.add('north')
-    }
-
-    if (!isSouthExterior) {
-      const hasNeighbor = building.rooms.some(other => {
-        if (other.id === room.id) return false
-        return (
-          Math.abs(other.position.z - (z + rl)) < 0.01 &&
-          rangesOverlap(other.position.x, other.position.x + other.dimensions.width, x, x + rw)
-        )
-      })
-      if (hasNeighbor) interior.add('south')
-    }
-
-    if (!isEastExterior) {
-      const hasNeighbor = building.rooms.some(other => {
-        if (other.id === room.id) return false
-        return (
-          Math.abs(other.position.x - (x + rw)) < 0.01 &&
-          rangesOverlap(other.position.z, other.position.z + other.dimensions.length, z, z + rl)
-        )
-      })
-      if (hasNeighbor) interior.add('east')
-    }
-
-    if (!isWestExterior) {
-      const hasNeighbor = building.rooms.some(other => {
-        if (other.id === room.id) return false
-        return (
-          Math.abs((other.position.x + other.dimensions.width) - x) < 0.01 &&
-          rangesOverlap(other.position.z, other.position.z + other.dimensions.length, z, z + rl)
-        )
-      })
-      if (hasNeighbor) interior.add('west')
-    }
-
-    result.set(room.id, interior)
-  }
-
-  return result
-}
-
-function rangesOverlap(a1: number, a2: number, b1: number, b2: number): boolean {
-  return a1 < b2 && a2 > b1
-}
+export const DEFAULT_WALL_THICKNESS = 0.12
 
 export default function BuildingGroup({ building, viewMode }: Props) {
   const { width: bw, length: bl, wallHeight } = building.dimensions
@@ -102,11 +30,17 @@ export default function BuildingGroup({ building, viewMode }: Props) {
   const floorAssembly: Assembly | undefined = building.assemblies?.floor
     ? getAssembly(building.assemblies.floor)
     : undefined
+  const partitionAssembly: Assembly | undefined = building.assemblies?.interiorPartition
+    ? getAssembly(building.assemblies.interiorPartition)
+    : undefined
 
   // Wall thickness for positioning = frame depth only (cladding extends beyond)
   const wallThickness = wallAssembly
     ? getFrameDepth(wallAssembly)
     : DEFAULT_WALL_THICKNESS
+
+  // Exterior layer depth (wind barrier + air gap + cladding) for corner coverage
+  const exteriorDepth = wallAssembly ? getExteriorDepth(wallAssembly) : 0
 
   // Outer footprint = interior dims + frame on each side
   const outerWidth = bw + 2 * wallThickness
@@ -118,6 +52,7 @@ export default function BuildingGroup({ building, viewMode }: Props) {
       <ExteriorWalls
         building={building}
         wallThickness={wallThickness}
+        exteriorDepth={exteriorDepth}
         viewMode={viewMode}
         wallAssembly={wallAssembly}
       />
@@ -164,7 +99,8 @@ export default function BuildingGroup({ building, viewMode }: Props) {
           room={room}
           building={building}
           wallThickness={wallThickness}
-          interiorWalls={interiorWallMap.get(room.id) ?? new Set()}
+          interiorWalls={interiorWallMap.get(room.id) ?? new Map()}
+          partitionAssembly={partitionAssembly}
           viewMode={viewMode}
         />
       ))}
@@ -172,17 +108,18 @@ export default function BuildingGroup({ building, viewMode }: Props) {
   )
 }
 
-function FloorAssemblyLayers({ assembly, viewMode, outerWidth, outerLength }: { assembly: Assembly; viewMode: ViewMode; outerWidth: number; outerLength: number }) {
+export function FloorAssemblyLayers({ assembly, viewMode, outerWidth, outerLength, exploded = false }: { assembly: Assembly; viewMode: ViewMode; outerWidth: number; outerLength: number; exploded?: boolean }) {
   const bw = outerWidth
   const bl = outerLength
   const totalThickness = getTotalThickness(assembly)
   const isFrame = viewMode === 'frame'
+  const gap = exploded ? 0.15 : 0
 
   // Floor layers stack upward from y=0 (bottom = EPDM spacers, top = duckboard)
-  let yCursor = -totalThickness
-  const layers = assembly.layers.map((layer) => {
+  let yCursor = -totalThickness - gap * (assembly.layers.length - 1)
+  const layers = assembly.layers.map((layer, i) => {
     const y = yCursor + layer.thickness / 2
-    yCursor += layer.thickness
+    yCursor += layer.thickness + (i < assembly.layers.length - 1 ? gap : 0)
     return { layer, y }
   })
 

@@ -235,7 +235,10 @@ export default function SaunaBench({ bench, roomDimensions, color, wallThickness
               distance={1.0}
               decay={2}
               color="#FFBB66"
-              castShadow={false}
+              castShadow
+              shadow-mapSize={[256, 256]}
+              shadow-camera-near={0.02}
+              shadow-camera-far={1.0}
             />
           )
         })

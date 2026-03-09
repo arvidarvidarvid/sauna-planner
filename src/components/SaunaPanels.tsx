@@ -132,6 +132,7 @@ export function CeilingPanels({ width, length, color, roughness = 0.75 }: Ceilin
         <mesh
           key={i}
           position={[0, -PANEL_DEPTH / 2, b.z]}
+          castShadow
           receiveShadow
         >
           <boxGeometry args={[width, PANEL_DEPTH, BOARD_WIDTH]} />

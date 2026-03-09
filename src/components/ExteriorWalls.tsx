@@ -8,6 +8,7 @@ import AssemblyWallMesh from './AssemblyWallMesh'
 interface Props {
   building: Building
   wallThickness: number
+  exteriorDepth: number
   viewMode: ViewMode
   wallAssembly?: Assembly
 }
@@ -15,7 +16,7 @@ interface Props {
 /**
  * Renders the four exterior walls of the building.
  */
-export default function ExteriorWalls({ building, wallThickness, viewMode, wallAssembly }: Props) {
+export default function ExteriorWalls({ building, wallThickness, exteriorDepth, viewMode, wallAssembly }: Props) {
   const { width: bw, length: bl, wallHeight } = building.dimensions
   const outerMat = MATERIAL_PROPS[building.materials.outerWalls]
 
@@ -106,24 +107,84 @@ export default function ExteriorWalls({ building, wallThickness, viewMode, wallA
     )
   }
 
+  const isFrame = viewMode === 'frame'
+  const ed = exteriorDepth
+
+  // Corner trim boards — two boards meeting at 90° at each building corner
+  const CORNER_WIDTH = 0.120   // 120mm face width
+  const CORNER_THICK = 0.028   // 28mm thick (slightly proud of cladding)
+  const CORNER_COLOR = '#F5F0E8'
+
+  // Heights at north and south edges
+  const hN = wallHeight
+  const hS = wallHeight + rise
+
+  // 4 corner positions: [xSign, zSign, height]
+  const corners: { x: number; z: number; h: number }[] = [
+    { x:  1, z: -1, h: hN }, // NE
+    { x: -1, z: -1, h: hN }, // NW
+    { x:  1, z:  1, h: hS }, // SE
+    { x: -1, z:  1, h: hS }, // SW
+  ]
+
   return (
     <>
       {/* North wall (low side of shed roof) — cladding wraps corners */}
       <group position={[0, 0, -bl / 2 - fd2]} rotation={[0, 0, 0]}>
-        {renderWall(bw, northOpenings, false, wallHeight, wallHeight, bw + 2 * fd)}
+        {renderWall(bw, northOpenings, false, wallHeight, wallHeight, bw + 2 * (fd + exteriorDepth))}
       </group>
       {/* South wall (high side of shed roof) — cladding wraps corners */}
       <group position={[0, 0, bl / 2 + fd2]} rotation={[0, Math.PI, 0]}>
-        {renderWall(bw, southOpenings, cutaway, wallHeight + rise, wallHeight + rise, bw + 2 * fd)}
+        {renderWall(bw, southOpenings, cutaway, wallHeight + rise, wallHeight + rise, bw + 2 * (fd + exteriorDepth))}
       </group>
       {/* East wall: local -X = north (low), local +X = south (high) */}
       <group position={[bw / 2 + fd2, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
-        {renderWall(ewWidth, eastOpenings, false, wallHeight, wallHeight + rise)}
+        {renderWall(ewWidth, eastOpenings, false, wallHeight, wallHeight + rise, ewWidth + 2 * exteriorDepth)}
       </group>
       {/* West wall: local -X = south (high), local +X = north (low) */}
       <group position={[-bw / 2 - fd2, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
-        {renderWall(ewWidth, westOpenings, false, wallHeight + rise, wallHeight)}
+        {renderWall(ewWidth, westOpenings, false, wallHeight + rise, wallHeight, ewWidth + 2 * exteriorDepth)}
       </group>
+
+      {/* Corner trim boards — positioned proud of outermost cladding surface */}
+      {!isFrame && corners.map(({ x: xs, z: zs, h }, i) => {
+        // fd2 + ed gets us to the outer face of the cladding layer nominal position.
+        // Add CORNER_THICK so the board sits fully in front of the cladding.
+        const cx = xs * (bw / 2 + fd2 + ed + CORNER_THICK)
+        const cz = zs * (bl / 2 + fd2 + ed + CORNER_THICK)
+        // Board A: faces N/S (runs along X), sits on the E/W wall's cladding face
+        // Board B: faces E/W (runs along Z), sits on the N/S wall's cladding face
+        return (
+          <group key={`corner-${i}`}>
+            {/* Board along N/S face (width in X, proud of N/S cladding) */}
+            <mesh
+              position={[
+                cx - xs * (CORNER_WIDTH / 2 - CORNER_THICK / 2),
+                h / 2,
+                cz + zs * CORNER_THICK / 2,
+              ]}
+              castShadow
+              receiveShadow
+            >
+              <boxGeometry args={[CORNER_WIDTH, h, CORNER_THICK]} />
+              <meshStandardMaterial color={CORNER_COLOR} roughness={0.5} />
+            </mesh>
+            {/* Board along E/W face (width in Z, proud of E/W cladding) */}
+            <mesh
+              position={[
+                cx + xs * CORNER_THICK / 2,
+                h / 2,
+                cz - zs * (CORNER_WIDTH / 2 - CORNER_THICK / 2),
+              ]}
+              castShadow
+              receiveShadow
+            >
+              <boxGeometry args={[CORNER_THICK, h, CORNER_WIDTH]} />
+              <meshStandardMaterial color={CORNER_COLOR} roughness={0.5} />
+            </mesh>
+          </group>
+        )
+      })}
     </>
   )
 }

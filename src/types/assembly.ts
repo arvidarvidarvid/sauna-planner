@@ -30,6 +30,6 @@ export interface AssemblyLayer {
 export interface Assembly {
   id: string;
   name: string;
-  kind: 'wall' | 'roof' | 'floor';
+  kind: 'wall' | 'roof' | 'floor' | 'partition';
   layers: AssemblyLayer[]; // ordered exterior→interior (or top→bottom)
 }

@@ -4,14 +4,19 @@ import { OrbitControls, GizmoHelper, GizmoViewport, Grid } from '@react-three/dr
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { Building } from '@/types/sauna'
+import type { ModuleId } from '@/types/module'
+import { moduleKey } from '@/types/module'
 import type { ViewMode, Viewpoint } from '@/App'
 import BuildingGroup from './BuildingGroup'
+import ModuleViewer from './ModuleViewer'
 
 interface Props {
   building: Building
   viewMode: ViewMode
   viewpoint: Viewpoint
   nightMode: boolean
+  selectedModule: ModuleId | null
+  exploded: boolean
 }
 
 interface ViewpointTarget {
@@ -197,11 +202,141 @@ function SkyboxBackdrop({ building, nightMode }: { building: Building; nightMode
   )
 }
 
+/** Camera controller for module browser mode — frames the module nicely */
+function ModuleCameraController({ selectedModule, building }: {
+  selectedModule: ModuleId
+  building: Building
+}) {
+  const { camera } = useThree()
+  const controlsRef = useRef<OrbitControlsImpl>(null)
+  const isAnimating = useRef(false)
+  const animProgress = useRef(0)
+  const startPos = useRef(new THREE.Vector3())
+  const startTarget = useRef(new THREE.Vector3())
+  const prevKey = useRef('')
+
+  const { position: targetPos, target: targetLookAt } = useMemo(
+    () => computeModuleCamera(selectedModule, building),
+    [selectedModule, building],
+  )
+
+  useEffect(() => {
+    const key = moduleKey(selectedModule)
+    if (key === prevKey.current) return
+    prevKey.current = key
+    isAnimating.current = true
+    animProgress.current = 0
+    startPos.current.copy(camera.position)
+    if (controlsRef.current) {
+      startTarget.current.copy(controlsRef.current.target)
+    }
+  }, [selectedModule, camera])
+
+  useFrame((_, delta) => {
+    if (!isAnimating.current || !controlsRef.current) return
+
+    animProgress.current = Math.min(1, animProgress.current + delta * 3)
+    const t = easeInOutCubic(animProgress.current)
+
+    camera.position.lerpVectors(startPos.current, targetPos, t)
+    controlsRef.current.target.lerpVectors(startTarget.current, targetLookAt, t)
+    controlsRef.current.update()
+
+    if (animProgress.current >= 1) {
+      isAnimating.current = false
+    }
+  })
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      enableDamping
+      dampingFactor={0.06}
+      minPolarAngle={0.05}
+      maxPolarAngle={Math.PI - 0.05}
+      minDistance={0.3}
+      maxDistance={20}
+    />
+  )
+}
+
+function computeModuleCamera(mod: ModuleId, building: Building): { position: THREE.Vector3; target: THREE.Vector3 } {
+  const { width: bw, length: bl, wallHeight } = building.dimensions
+  const fd = 0.095
+
+  switch (mod.type) {
+    case 'exterior-wall': {
+      const ewWidth = bl + 2 * fd
+      const pitchRad = (building.roof.pitch * Math.PI) / 180
+      const rise = building.roof.type === 'shed' ? Math.tan(pitchRad) * ewWidth : 0
+      const isNS = mod.wall === 'north' || mod.wall === 'south'
+      const w = isNS ? bw : ewWidth
+      const h = mod.wall === 'south' ? wallHeight + rise : wallHeight
+      const dist = Math.max(w, h) * 1.4
+      return {
+        position: new THREE.Vector3(w * 0.3, h * 0.6, dist),
+        target: new THREE.Vector3(0, h * 0.45, 0),
+      }
+    }
+    case 'roof': {
+      const ow = bw + 2 * fd
+      const ol = bl + 2 * fd
+      const dist = Math.max(ow, ol) * 1.5
+      return {
+        position: new THREE.Vector3(ow * 0.6, wallHeight + dist * 0.6, ol * 0.8),
+        target: new THREE.Vector3(0, wallHeight, 0),
+      }
+    }
+    case 'floor-assembly': {
+      const ow = bw + 2 * fd
+      const ol = bl + 2 * fd
+      const dist = Math.max(ow, ol) * 1.2
+      return {
+        position: new THREE.Vector3(ow * 0.5, dist * 0.4, ol * 0.6),
+        target: new THREE.Vector3(0, -0.1, 0),
+      }
+    }
+    case 'interior-partition': {
+      const room = building.rooms.find(r => r.id === mod.roomId)
+      const isNS = mod.wall === 'north' || mod.wall === 'south'
+      const w = room ? (isNS ? room.dimensions.width : room.dimensions.length) : 1
+      const h = wallHeight
+      const dist = Math.max(w, h) * 1.4
+      return {
+        position: new THREE.Vector3(w * 0.2, h * 0.6, dist),
+        target: new THREE.Vector3(0, h * 0.45, 0),
+      }
+    }
+    case 'bench': {
+      const room = building.rooms.find(r => r.id === mod.roomId)
+      const bench = room?.benches?.[mod.benchIndex]
+      const h = bench?.surfaceHeight ?? 0.5
+      return {
+        position: new THREE.Vector3(0.8, h + 0.5, 1.2),
+        target: new THREE.Vector3(0, h * 0.5, 0),
+      }
+    }
+    case 'heater': {
+      const room = building.rooms.find(r => r.id === mod.roomId)
+      const h = room?.heater?.height ?? 0.6
+      return {
+        position: new THREE.Vector3(0.5, h * 0.8, 0.8),
+        target: new THREE.Vector3(0, h * 0.4, 0),
+      }
+    }
+    case 'fixture':
+      return {
+        position: new THREE.Vector3(0.6, 0.8, 0.9),
+        target: new THREE.Vector3(0, 0.35, 0),
+      }
+  }
+}
+
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 }
 
-export default function SaunaScene({ building, viewMode, viewpoint, nightMode }: Props) {
+export default function SaunaScene({ building, viewMode, viewpoint, nightMode, selectedModule, exploded }: Props) {
   const { width, length, wallHeight } = building.dimensions
   const terraceSpan = building.terrace
     ? Math.max(building.terrace.width, building.terrace.length)
@@ -209,6 +344,8 @@ export default function SaunaScene({ building, viewMode, viewpoint, nightMode }:
   const maxSpan = Math.max(width, length, terraceSpan)
 
   const viewpoints = useMemo(() => computeViewpoints(building), [building])
+
+  const isModuleMode = selectedModule != null
 
   return (
     <Canvas
@@ -241,9 +378,17 @@ export default function SaunaScene({ building, viewMode, viewpoint, nightMode }:
       />
       {/* Warm fill light from south (front) */}
       <directionalLight position={[0, 3, 10]} intensity={nightMode ? 0.02 : 0.3} color="#FFE8C0" />
+      {/* Extra fill light for module browser — brighter to show detail */}
+      {isModuleMode && (
+        <directionalLight position={[-5, 8, 4]} intensity={0.6} color="#E8E0F0" />
+      )}
 
-      {/* Camera controller with animated transitions */}
-      <CameraController viewpoint={viewpoint} viewpoints={viewpoints} />
+      {/* Camera controller */}
+      {isModuleMode ? (
+        <ModuleCameraController selectedModule={selectedModule} building={building} />
+      ) : (
+        <CameraController viewpoint={viewpoint} viewpoints={viewpoints} />
+      )}
 
       {/* Orientation gizmo */}
       <GizmoHelper alignment="bottom-right" margin={[72, 72]}>
@@ -255,24 +400,30 @@ export default function SaunaScene({ building, viewMode, viewpoint, nightMode }:
 
       {/* Ground grid */}
       <Grid
-        args={[maxSpan * 4, maxSpan * 4]}
+        args={[isModuleMode ? maxSpan * 2 : maxSpan * 4, isModuleMode ? maxSpan * 2 : maxSpan * 4]}
         position={[0, -0.01, 0]}
-        cellSize={1}
+        cellSize={isModuleMode ? 0.1 : 1}
         cellThickness={0.5}
         cellColor="#2A2520"
-        sectionSize={5}
+        sectionSize={isModuleMode ? 1 : 5}
         sectionThickness={1}
         sectionColor="#3A3530"
-        fadeDistance={maxSpan * 3}
+        fadeDistance={isModuleMode ? maxSpan * 1.5 : maxSpan * 3}
         fadeStrength={1}
         infiniteGrid
       />
 
-      {/* South backdrop photo */}
-      <SkyboxBackdrop building={building} nightMode={nightMode} />
+      {/* South backdrop photo — hidden in module mode */}
+      {!isModuleMode && <SkyboxBackdrop building={building} nightMode={nightMode} />}
 
-      {/* The building */}
-      <BuildingGroup building={building} viewMode={viewMode} />
+      {/* The building or selected module */}
+      {isModuleMode ? (
+        <group rotation={[0, Math.PI, 0]}>
+          <ModuleViewer building={building} selectedModule={selectedModule} exploded={exploded} />
+        </group>
+      ) : (
+        <BuildingGroup building={building} viewMode={viewMode} />
+      )}
     </Canvas>
   )
 }

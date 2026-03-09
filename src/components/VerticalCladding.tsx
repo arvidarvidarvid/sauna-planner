@@ -98,6 +98,21 @@ function addBoards(
   const cx = (left + right) / 2
   const h = heightAt(cx)
 
+  // Check if this board overlaps any opening horizontally
+  const overlapsAny = openings.some(o => {
+    const oL = o.center - o.width / 2
+    const oR = o.center + o.width / 2
+    return left < oR && right > oL
+  })
+
+  if (!overlapsAny) {
+    // No overlap — render full board at full height
+    result.push({ x: cx, yCenter: h / 2, height: h, width: w, zCenter, depth, isFront })
+    return
+  }
+
+  // Board overlaps opening(s). Two things to render:
+  // 1. Vertically split segments at full width (above/below openings)
   for (const seg of verticalSegments(cx, w, h, openings)) {
     result.push({
       x: cx,
@@ -109,6 +124,54 @@ function addBoards(
       isFront,
     })
   }
+
+  // 2. Horizontally clipped "ripped" strips at full height (fills gaps next to trim)
+  const strips = horizontalStrips(left, right, openings)
+  for (const [sL, sR] of strips) {
+    const sw = sR - sL
+    if (sw < 0.005) continue
+    // Skip if this strip is the same as the full board (no clipping happened)
+    if (Math.abs(sw - w) < 0.001) continue
+    const scx = (sL + sR) / 2
+    const sh = heightAt(scx)
+    result.push({
+      x: scx,
+      yCenter: sh / 2,
+      height: sh,
+      width: sw,
+      zCenter,
+      depth,
+      isFront,
+    })
+  }
+}
+
+/** Clip [left, right] against all openings, returning sub-strips that don't overlap any opening. */
+function horizontalStrips(
+  left: number, right: number, openings: Opening[],
+): [number, number][] {
+  // Collect horizontal ranges of all openings
+  const gaps: [number, number][] = []
+  for (const o of openings) {
+    const oL = o.center - o.width / 2
+    const oR = o.center + o.width / 2
+    if (oL < right && oR > left) {
+      gaps.push([Math.max(oL, left), Math.min(oR, right)])
+    }
+  }
+
+  if (gaps.length === 0) return [[left, right]]
+
+  gaps.sort((a, b) => a[0] - b[0])
+
+  const strips: [number, number][] = []
+  let cursor = left
+  for (const [gL, gR] of gaps) {
+    if (cursor < gL - 0.001) strips.push([cursor, gL])
+    cursor = Math.max(cursor, gR)
+  }
+  if (cursor < right - 0.001) strips.push([cursor, right])
+  return strips
 }
 
 function verticalSegments(

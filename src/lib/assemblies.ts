@@ -186,6 +186,55 @@ export const ASSEMBLY_PRESETS: Record<string, Assembly> = {
       },
     ],
   },
+  'standard-interior-partition': {
+    id: 'standard-interior-partition',
+    name: 'Standard Interior Partition (~80mm)',
+    kind: 'partition',
+    layers: [
+      {
+        name: 'Interior panel',
+        material: 'aspen-panel',
+        thickness: 0.015,
+        lambda: 0.13,
+        color: '#D4BC96',
+      },
+      {
+        name: 'Vapor barrier (Al)',
+        material: 'aluminum-vapor-barrier',
+        thickness: 0.001,
+        lambda: null,
+        color: '#C0C0C0',
+        opacity: 0.6,
+      },
+      {
+        name: 'Frame + stone wool',
+        material: 'stone-wool',
+        thickness: 0.045,
+        lambda: 0.036,
+        color: '#C4B44A',
+        framing: {
+          memberWidth: 0.045,
+          spacing: 0.600,
+          memberColor: '#C8A878',
+        },
+      },
+      {
+        name: 'Vapor barrier (Al)',
+        material: 'aluminum-vapor-barrier',
+        thickness: 0.001,
+        lambda: null,
+        color: '#C0C0C0',
+        opacity: 0.6,
+      },
+      {
+        name: 'Interior panel',
+        material: 'aspen-panel',
+        thickness: 0.015,
+        lambda: 0.13,
+        color: '#D4BC96',
+      },
+    ],
+  },
 };
 
 export function getAssembly(id: string): Assembly | undefined {
@@ -200,4 +249,11 @@ export function getTotalThickness(assembly: Assembly): number {
 export function getFrameDepth(assembly: Assembly): number {
   const frameLayer = assembly.layers.find(l => l.framing);
   return frameLayer?.thickness ?? getTotalThickness(assembly);
+}
+
+/** Returns the total thickness of layers outside the frame (exterior side). */
+export function getExteriorDepth(assembly: Assembly): number {
+  const frameIndex = assembly.layers.findIndex(l => l.framing);
+  if (frameIndex < 0) return 0;
+  return assembly.layers.slice(0, frameIndex).reduce((sum, l) => sum + l.thickness, 0);
 }

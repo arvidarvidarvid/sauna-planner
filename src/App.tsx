@@ -1,15 +1,18 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { CONFIGS, DEFAULT_CONFIG_ID } from './configs'
 import SaunaScene from './components/SaunaScene'
 import InfoPanel from './components/InfoPanel'
+import ModuleBrowser from './components/ModuleBrowser'
+import type { ModuleId } from './types/module'
 
-export type ViewMode = 'solid' | 'cutaway' | 'frame'
+export type ViewMode = 'solid' | 'cutaway' | 'frame' | 'modules'
 export type Viewpoint = 'exterior' | 'upper-1' | 'upper-2' | 'lower-1' | 'lower-2' | 'entry'
 
 const VIEW_MODES: { value: ViewMode; label: string }[] = [
   { value: 'solid', label: 'Solid' },
   { value: 'cutaway', label: 'Cutaway' },
   { value: 'frame', label: 'Frame' },
+  { value: 'modules', label: 'Modules' },
 ]
 
 const VIEWPOINTS: { value: Viewpoint; label: string }[] = [
@@ -26,14 +29,32 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('solid')
   const [viewpoint, setViewpoint] = useState<Viewpoint>('exterior')
   const [nightMode, setNightMode] = useState(false)
+  const [selectedModule, setSelectedModule] = useState<ModuleId | null>(null)
+  const [exploded, setExploded] = useState(false)
 
   const config = CONFIGS.find(c => c.id === configId) ?? CONFIGS[0]
   const building = config.building
 
+  const isModules = viewMode === 'modules'
+
   const handleConfigChange = (id: string) => {
     setConfigId(id)
-    setViewpoint('exterior') // reset to exterior when switching configs
+    setViewpoint('exterior')
+    setSelectedModule(null)
   }
+
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
+    setViewMode(mode)
+    if (mode === 'modules') {
+      // Auto-select first module
+      if (!selectedModule) {
+        setSelectedModule({ type: 'exterior-wall', wall: 'north' })
+      }
+      setViewpoint('exterior')
+    } else {
+      setSelectedModule(null)
+    }
+  }, [selectedModule])
 
   return (
     <div className="flex flex-col h-screen bg-stone-950 text-stone-100 font-sans">
@@ -54,28 +75,30 @@ export default function App() {
           </select>
         </div>
         <div className="flex items-center gap-4">
-          {/* Viewpoint selector */}
-          <div className="flex rounded border border-stone-700 overflow-hidden">
-            {VIEWPOINTS.map(({ value, label }) => (
-              <button
-                key={value}
-                onClick={() => setViewpoint(value)}
-                className={`text-xs px-3 py-1.5 transition-colors ${
-                  viewpoint === value
-                    ? 'bg-amber-800/40 text-amber-300'
-                    : 'bg-stone-800 text-stone-400 hover:bg-stone-700 hover:text-stone-300'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          {/* Viewpoint selector — hidden in modules mode */}
+          {!isModules && (
+            <div className="flex rounded border border-stone-700 overflow-hidden">
+              {VIEWPOINTS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => setViewpoint(value)}
+                  className={`text-xs px-3 py-1.5 transition-colors ${
+                    viewpoint === value
+                      ? 'bg-amber-800/40 text-amber-300'
+                      : 'bg-stone-800 text-stone-400 hover:bg-stone-700 hover:text-stone-300'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           {/* View mode toggle */}
           <div className="flex rounded border border-stone-700 overflow-hidden">
             {VIEW_MODES.map(({ value, label }) => (
               <button
                 key={value}
-                onClick={() => setViewMode(value)}
+                onClick={() => handleViewModeChange(value)}
                 className={`text-xs px-3 py-1.5 transition-colors ${
                   viewMode === value
                     ? 'bg-amber-800/40 text-amber-300'
@@ -109,12 +132,44 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <aside className="w-60 shrink-0 border-r border-stone-800 overflow-y-auto">
-          <InfoPanel building={building} />
+          {isModules && selectedModule ? (
+            <ModuleBrowser
+              building={building}
+              selectedModule={selectedModule}
+              onSelect={setSelectedModule}
+            />
+          ) : (
+            <InfoPanel building={building} />
+          )}
         </aside>
 
         {/* 3D Canvas */}
         <main className="flex-1 relative">
-          <SaunaScene building={building} viewMode={viewMode} viewpoint={viewpoint} nightMode={nightMode} />
+          <SaunaScene
+            building={building}
+            viewMode={viewMode}
+            viewpoint={viewpoint}
+            nightMode={nightMode}
+            selectedModule={isModules ? selectedModule : null}
+            exploded={exploded}
+          />
+          {isModules && (
+            <div className="absolute top-3 right-3 flex rounded border border-stone-700 overflow-hidden">
+              {(['default', 'exploded'] as const).map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => setExploded(mode === 'exploded')}
+                  className={`text-xs px-3 py-1.5 transition-colors ${
+                    (mode === 'exploded') === exploded
+                      ? 'bg-amber-800/40 text-amber-300'
+                      : 'bg-stone-800 text-stone-400 hover:bg-stone-700 hover:text-stone-300'
+                  }`}
+                >
+                  {mode === 'default' ? 'Default' : 'Exploded'}
+                </button>
+              ))}
+            </div>
+          )}
         </main>
       </div>
     </div>

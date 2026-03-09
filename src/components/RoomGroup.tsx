@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
-import type { Room, WallName, Building, Opening } from '@/types/sauna'
+import type { Room, WallName, Building } from '@/types/sauna'
+import type { Assembly } from '@/types/assembly'
+import type { InteriorWallStatus } from '@/lib/building'
 import type { ViewMode } from '@/App'
 import { MATERIAL_PROPS } from '@/lib/materials'
-import { generateWallFraming } from '@/lib/framing'
-import { MEMBER_TYPE_COLORS } from './AssemblyWallMesh'
+import { getFrameDepth } from '@/lib/assemblies'
 import WallMesh from './WallMesh'
+import AssemblyWallMesh from './AssemblyWallMesh'
 import SaunaBench from './SaunaBench'
 import SaunaHeater from './SaunaHeater'
 import FixtureObject from './Fixture'
@@ -14,38 +15,12 @@ interface Props {
   room: Room
   building: Building
   wallThickness: number
-  interiorWalls: Set<WallName>
+  interiorWalls: Map<WallName, InteriorWallStatus>
+  partitionAssembly?: Assembly
   viewMode: ViewMode
 }
 
-function PartitionFraming({ wallWidth, wallHeightLeft, wallHeightRight, openings, thickness }: {
-  wallWidth: number; wallHeightLeft: number; wallHeightRight: number; openings: Opening[]; thickness: number;
-}) {
-  const members = useMemo(() =>
-    generateWallFraming(wallWidth, wallHeightLeft, wallHeightRight, openings, {
-      memberWidth: 0.045,
-      spacing: 0.600,
-      layerThickness: thickness,
-    }), [wallWidth, wallHeightLeft, wallHeightRight, openings, thickness]);
-
-  return (
-    <>
-      {members.map((member, i) => (
-        <mesh
-          key={i}
-          position={[member.x, member.y, 0]}
-          rotation={member.rotZ ? [0, 0, member.rotZ] : undefined}
-          castShadow
-        >
-          <boxGeometry args={[member.width, member.height, member.depth]} />
-          <meshStandardMaterial color={MEMBER_TYPE_COLORS[member.type]} roughness={0.75} />
-        </mesh>
-      ))}
-    </>
-  );
-}
-
-export default function RoomGroup({ room, building, wallThickness, interiorWalls, viewMode }: Props) {
+export default function RoomGroup({ room, building, wallThickness, interiorWalls, partitionAssembly, viewMode }: Props) {
   const { width, length, height } = room.dimensions
   const pos = room.position // SW corner in building space
 
@@ -61,7 +36,9 @@ export default function RoomGroup({ room, building, wallThickness, interiorWalls
   const floorProps = MATERIAL_PROPS[mat.floor]
   const benchProps = MATERIAL_PROPS[mat.benches ?? 'aspen']
 
-  const partitionThickness = wallThickness * 0.6  // interior walls are thinner
+  const partitionThickness = partitionAssembly
+    ? getFrameDepth(partitionAssembly)
+    : wallThickness * 0.6
 
   // Shed roof slope: height varies along N→S (Z axis)
   const fd = wallThickness
@@ -127,84 +104,122 @@ export default function RoomGroup({ room, building, wallThickness, interiorWalls
         )
       })()}
 
-      {/* Interior partition walls — offset by half thickness into the room to avoid
-         z-fighting with the neighbor room's matching partition */}
-      {/* North wall: z = -length/2, nudge south (into room) */}
-      {interiorWalls.has('north') ? (
-        <group position={[0, 0, -length / 2 + partitionThickness / 2]} rotation={[0, 0, 0]}>
-          {isFrame
-            ? <PartitionFraming wallWidth={width} wallHeightLeft={hNorthEdge} wallHeightRight={hNorthEdge} openings={wallOpenings('north')} thickness={partitionThickness} />
-            : <WallMesh
-                wallWidth={width}
-                wallHeight={hNorthEdge}
-                thickness={partitionThickness}
-                openings={wallOpenings('north')}
-                color={innerProps.color}
-                roughness={innerProps.roughness}
-                metalness={innerProps.metalness}
-              />}
+      {/* Interior partition walls — only 'owned' walls render (deduplication).
+         Wall is centered on the room boundary edge. */}
+      {/* North wall */}
+      {interiorWalls.get('north') === 'owned' && (
+        <group position={[0, 0, -length / 2]} rotation={[0, 0, 0]}>
+          {partitionAssembly ? (
+            <AssemblyWallMesh
+              wallWidth={width}
+              wallHeight={hNorthEdge}
+              openings={wallOpenings('north')}
+              assembly={partitionAssembly}
+              hidden={false}
+              viewMode={viewMode}
+            />
+          ) : (
+            <WallMesh
+              wallWidth={width}
+              wallHeight={hNorthEdge}
+              thickness={partitionThickness}
+              openings={wallOpenings('north')}
+              color={innerProps.color}
+              roughness={innerProps.roughness}
+              metalness={innerProps.metalness}
+            />
+          )}
         </group>
-      ) : null}
+      )}
 
-      {/* South wall: z = +length/2, nudge north (into room) */}
-      {interiorWalls.has('south') ? (
-        <group position={[0, 0, length / 2 - partitionThickness / 2]} rotation={[0, Math.PI, 0]}>
-          {isFrame
-            ? <PartitionFraming wallWidth={width} wallHeightLeft={hSouthEdge} wallHeightRight={hSouthEdge} openings={wallOpenings('south')} thickness={partitionThickness} />
-            : <WallMesh
-                wallWidth={width}
-                wallHeight={hSouthEdge}
-                thickness={partitionThickness}
-                openings={wallOpenings('south')}
-                color={innerProps.color}
-                roughness={innerProps.roughness}
-                metalness={innerProps.metalness}
-              />}
+      {/* South wall */}
+      {interiorWalls.get('south') === 'owned' && (
+        <group position={[0, 0, length / 2]} rotation={[0, Math.PI, 0]}>
+          {partitionAssembly ? (
+            <AssemblyWallMesh
+              wallWidth={width}
+              wallHeight={hSouthEdge}
+              openings={wallOpenings('south')}
+              assembly={partitionAssembly}
+              hidden={false}
+              viewMode={viewMode}
+            />
+          ) : (
+            <WallMesh
+              wallWidth={width}
+              wallHeight={hSouthEdge}
+              thickness={partitionThickness}
+              openings={wallOpenings('south')}
+              color={innerProps.color}
+              roughness={innerProps.roughness}
+              metalness={innerProps.metalness}
+            />
+          )}
         </group>
-      ) : null}
+      )}
 
-      {/* East wall: x = +width/2, nudge west (into room) */}
-      {interiorWalls.has('east') ? (
-        <group position={[width / 2 - partitionThickness / 2, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
-          {isFrame
-            ? <PartitionFraming wallWidth={length} wallHeightLeft={hNorthEdge} wallHeightRight={hSouthEdge} openings={wallOpenings('east')} thickness={partitionThickness} />
-            : <WallMesh
-                wallWidth={length}
-                wallHeight={hNorthEdge}
-                wallHeightRight={hSouthEdge}
-                thickness={partitionThickness}
-                openings={wallOpenings('east')}
-                color={innerProps.color}
-                roughness={innerProps.roughness}
-                metalness={innerProps.metalness}
-              />}
+      {/* East wall */}
+      {interiorWalls.get('east') === 'owned' && (
+        <group position={[width / 2, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
+          {partitionAssembly ? (
+            <AssemblyWallMesh
+              wallWidth={length}
+              wallHeight={hNorthEdge}
+              wallHeightRight={hSouthEdge}
+              openings={wallOpenings('east')}
+              assembly={partitionAssembly}
+              hidden={false}
+              viewMode={viewMode}
+            />
+          ) : (
+            <WallMesh
+              wallWidth={length}
+              wallHeight={hNorthEdge}
+              wallHeightRight={hSouthEdge}
+              thickness={partitionThickness}
+              openings={wallOpenings('east')}
+              color={innerProps.color}
+              roughness={innerProps.roughness}
+              metalness={innerProps.metalness}
+            />
+          )}
         </group>
-      ) : null}
+      )}
 
-      {/* West wall: x = -width/2, nudge east (into room) */}
-      {interiorWalls.has('west') ? (
-        <group position={[-width / 2 + partitionThickness / 2, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
-          {isFrame
-            ? <PartitionFraming wallWidth={length} wallHeightLeft={hSouthEdge} wallHeightRight={hNorthEdge} openings={wallOpenings('west')} thickness={partitionThickness} />
-            : <WallMesh
-                wallWidth={length}
-                wallHeight={hSouthEdge}
-                wallHeightRight={hNorthEdge}
-                thickness={partitionThickness}
-                openings={wallOpenings('west')}
-                color={innerProps.color}
-                roughness={innerProps.roughness}
-                metalness={innerProps.metalness}
-              />}
+      {/* West wall */}
+      {interiorWalls.get('west') === 'owned' && (
+        <group position={[-width / 2, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
+          {partitionAssembly ? (
+            <AssemblyWallMesh
+              wallWidth={length}
+              wallHeight={hSouthEdge}
+              wallHeightRight={hNorthEdge}
+              openings={wallOpenings('west')}
+              assembly={partitionAssembly}
+              hidden={false}
+              viewMode={viewMode}
+            />
+          ) : (
+            <WallMesh
+              wallWidth={length}
+              wallHeight={hSouthEdge}
+              wallHeightRight={hNorthEdge}
+              thickness={partitionThickness}
+              openings={wallOpenings('west')}
+              color={innerProps.color}
+              roughness={innerProps.roughness}
+              metalness={innerProps.metalness}
+            />
+          )}
         </group>
-      ) : null}
+      )}
 
       {/* Interior wall panels — sauna panelling on all room walls.
          Exterior walls: offset 45mm inward past assembly interior panel + counter-batten.
          Interior partition walls: offset past partition half-thickness + small gap. */}
       {!isFrame && (() => {
         const extOffset = 0.045  // inset for exterior walls (past assembly layers)
-        const intOffset = partitionThickness + 0.005  // inset past full partition thickness + small gap
+        const intOffset = partitionThickness / 2 + 0.005  // wall centered on boundary, so half-thickness + gap
         const nOff = interiorWalls.has('north') ? intOffset : extOffset
         const sOff = interiorWalls.has('south') ? intOffset : extOffset
         const eOff = interiorWalls.has('east') ? intOffset : extOffset
@@ -238,9 +253,13 @@ export default function RoomGroup({ room, building, wallThickness, interiorWalls
         <pointLight
           position={[0, height - 0.15, 0]}
           intensity={0.8}
-          distance={Math.max(width, length) * 2}
+          distance={height}
+          decay={2}
           color="#FFD090"
-          castShadow={false}
+          castShadow
+          shadow-mapSize={[512, 512]}
+          shadow-camera-near={0.05}
+          shadow-camera-far={height}
         />
       )}
 

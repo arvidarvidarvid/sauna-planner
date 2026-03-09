@@ -170,6 +170,7 @@ export interface Building {
     exteriorWall?: string;
     roof?: string;
     floor?: string;
+    interiorPartition?: string;
   };
   /** Optional terrace the building sits on. */
   terrace?: Terrace;
