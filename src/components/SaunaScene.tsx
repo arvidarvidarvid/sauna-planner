@@ -171,8 +171,8 @@ function CameraController({ viewpoint, viewpoints }: {
 
 /** Photo backdrop placed south of the building, visible through the sauna window */
 function SkyboxBackdrop({ building, nightMode }: { building: Building; nightMode: boolean }) {
-  const dayTexture = useLoader(THREE.TextureLoader, '/skybox.png')
-  const nightTexture = useLoader(THREE.TextureLoader, '/skybox-night.png')
+  const dayTexture = useLoader(THREE.TextureLoader, `${import.meta.env.BASE_URL}skybox.png`)
+  const nightTexture = useLoader(THREE.TextureLoader, `${import.meta.env.BASE_URL}skybox-night.png`)
   const texture = nightMode ? nightTexture : dayTexture
   const { length } = building.dimensions
 
