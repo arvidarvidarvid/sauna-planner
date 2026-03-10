@@ -398,6 +398,69 @@ export function computeShoppingList(
     })
   }
 
+  // ── Electrical ─────────────────────────────────────────────────────────
+
+  items.push({
+    name: 'Gruppcentral 4–6 grupper',
+    unit: 'st',
+    qty: 1,
+    unitPrice: PRICES.electrical_panel,
+    category: 'electrical',
+  })
+  items.push({
+    name: 'Jordfelsbrytare (bastugrupp)',
+    unit: 'st',
+    qty: 1,
+    unitPrice: PRICES.rcd_breaker,
+    category: 'electrical',
+  })
+
+  if (hasHeater) {
+    // Heater cable run — estimate ~12m for a small building
+    const cableLength = Math.ceil((perimeter + wh) * 1.5)
+    items.push({
+      name: 'Värmekabel 5×2.5mm² (aggregat)',
+      unit: 'lm',
+      qty: cableLength,
+      unitPrice: PRICES.heater_cable_per_m,
+      category: 'electrical',
+    })
+  }
+
+  // Lighting per room
+  const roomCount = building.rooms.length
+  const saunaRooms = building.rooms.filter(r => r.type === 'sauna')
+  items.push({
+    name: 'Takarmatur bastuklassad',
+    unit: 'st',
+    qty: roomCount,
+    unitPrice: PRICES.ceiling_fixture,
+    category: 'electrical',
+  })
+  if (saunaRooms.length > 0) {
+    items.push({
+      name: 'LED-list (bakom lav)',
+      unit: 'st',
+      qty: saunaRooms.length,
+      unitPrice: PRICES.led_strip,
+      category: 'electrical',
+    })
+    items.push({
+      name: 'Dimmer bastuklassad',
+      unit: 'st',
+      qty: saunaRooms.length,
+      unitPrice: PRICES.sauna_dimmer,
+      category: 'electrical',
+    })
+  }
+  items.push({
+    name: 'Kabelkanal, dosa, diverse',
+    unit: 'st',
+    qty: 1,
+    unitPrice: PRICES.conduit_misc,
+    category: 'electrical',
+  })
+
   // ── Fasteners ───────────────────────────────────────────────────────────
 
   // Interior paneling screws

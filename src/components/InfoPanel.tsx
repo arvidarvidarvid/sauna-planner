@@ -26,12 +26,13 @@ const CATEGORY_LABELS: Record<PricedItem['category'], string> = {
   membrane: 'Duk & folie',
   openings: 'Dörrar & fönster',
   equipment: 'Utrustning',
+  electrical: 'El',
   fasteners: 'Infästning',
 }
 
 const CATEGORY_ORDER: PricedItem['category'][] = [
   'framing', 'insulation', 'membrane', 'cladding', 'roofing',
-  'interior', 'openings', 'equipment', 'fasteners',
+  'interior', 'openings', 'equipment', 'electrical', 'fasteners',
 ]
 
 export default function InfoPanel({ building }: Props) {

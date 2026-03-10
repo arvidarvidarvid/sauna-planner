@@ -14,7 +14,7 @@ export interface PricedItem {
   /** Price per unit (SEK) */
   unitPrice: number
   /** Category for grouping */
-  category: 'framing' | 'insulation' | 'cladding' | 'interior' | 'roofing' | 'membrane' | 'openings' | 'equipment' | 'fasteners'
+  category: 'framing' | 'insulation' | 'cladding' | 'interior' | 'roofing' | 'membrane' | 'openings' | 'equipment' | 'electrical' | 'fasteners'
 }
 
 // ── Unit prices ──────────────────────────────────────────────────────────────
@@ -55,6 +55,15 @@ export const PRICES = {
   // Equipment
   electric_heater: 8000,     // mid-range 6-8kW
   sauna_stones: 500,
+
+  // Electrical
+  electrical_panel: 2000,    // small 4-6 group panel (gruppsäkringsskåp)
+  rcd_breaker: 1000,         // ground fault breaker for sauna circuit
+  heater_cable_per_m: 65,    // heat-rated silicone 5×2.5mm²
+  led_strip: 400,            // behind-bench LED strip per room
+  ceiling_fixture: 300,      // sauna-rated ceiling light per room
+  sauna_dimmer: 400,         // sauna-rated switch/dimmer
+  conduit_misc: 500,         // conduit, junction boxes, misc
 
   // Flooring
   duckboard_per_m2: 500,     // bastudäck sections
